@@ -1,6 +1,7 @@
 import sympy
 import xml.etree.ElementTree as ET
 import numbers
+import collections
 
 
 class Model:
@@ -8,12 +9,20 @@ class Model:
         self.name = ''
         self.solution_variables = {}
         self.independent_variables = {}
+        self.parameters = {}
         self.eqs = {}
+        self.includes = {}
 
     def __str__(self):
         out = ''
 
+        out = out + '---------------------\n'
         out = out + 'Model "{}":\n'.format(self.name)
+
+        out = out + 'parameters:\n'
+        for param in self.parameters:
+            out = out + sympy.pretty(param) + '\n'
+
         out = out + 'solution_variables:\n'
         for symbol in self.solution_variables:
             out = out + sympy.pretty(symbol) + '\n'
@@ -25,6 +34,16 @@ class Model:
         out = out + 'equations:\n'
         for eq in self.eqs:
             out = out + sympy.pretty(eq) + '\n'
+
+        out = out + 'includes:\n'
+        for (submodel, to_replace, replacement) in self.includes:
+            out = out + 'replace:' + '\n'
+            out = out + sympy.pretty(to_replace) + '\n'
+            out = out + 'with:' + '\n'
+            out = out + sympy.pretty(replacement) + '\n'
+            out = out + 'in:' + '\n'
+            out = out + str(submodel) + '\n'
+        out = out + '---------------------\n'
         return out
 
 
@@ -61,73 +80,6 @@ class Connection:
         return out
 
 
-def create_sympy_model():
-
-    x = sympy.Symbol('x')
-    t = sympy.Symbol('t')
-    L = sympy.Symbol('L')
-    alpha = sympy.Symbol('a')
-    E0 = sympy.Symbol('Emid')
-    k0 = sympy.Symbol('krate')
-    Cdl = sympy.Symbol('Cdl')
-    Es = sympy.Symbol('Es')
-    dE = sympy.Symbol('dE')
-    w = sympy.Symbol('w')
-    E = Es + t + dE * sympy.sin(w * t)
-
-    c = sympy.Symbol('c')
-    lhs_boundary = Model()
-    lhs_boundary.name = 'lhs'
-    lhs_boundary.solution_variables = {c}
-    lhs_boundary.independent_variables = {}
-    lhs_boundary.eqs = {sympy.Eq(c, 1)}
-    clhs = c
-
-    c = sympy.Function('c')(x, t)
-    i = sympy.Function('i')(t)
-    rhs_boundary = Model()
-    rhs_boundary.name = 'rhs'
-    rhs_boundary.independent_variables = {sympy.Eq(x, L), t > 0}
-    rhs_boundary.solution_variables = {c, i}
-    rhs_boundary.eqs = {
-        sympy.Eq(c.diff(x), k0 * ((1-c)*sympy.exp((1-alpha)*(E-E0)) -
-                                  c*sympy.exp(-alpha*(E-E0)))),
-        sympy.Eq(i, Cdl * E.diff(t))
-    }
-    crhs = c
-
-    c = sympy.Function('c')(x, t)
-    domain = Model()
-    domain.name = 'domain'
-    domain.independent_variables = {sympy.And(0 < x, x < L), t > 0}
-    domain.solution_variables = {c}
-    domain.eqs = {sympy.Eq(c.diff(t), c.diff(x).diff(x))}
-    cd = c
-
-    models = Models()
-    models.models = {lhs_boundary, rhs_boundary, domain}
-    models.connections = {
-        Connection(
-            (lhs_boundary, sympy.Symbol('c')),
-            (domain, sympy.Function('c')(0, t))
-        ),
-        Connection(
-            (rhs_boundary, sympy.Function('c')(L, t)),
-            (domain, sympy.Function('c')(L, t))
-        ),
-        Connection(
-            (domain, sympy.Function('c')(L, t)),
-            (rhs_boundary, sympy.Function('c')(L, t))
-        ),
-        Connection(
-            (domain, sympy.Function('c')(x, t).diff(x)),
-            (rhs_boundary, sympy.Function('c')(x, t).diff(x))
-        )
-    }
-
-    return models
-
-
 def sympy_to_mathml(s):
     mathml_str = sympy.printing.mathml(s)
     return ET.fromstring(mathml_str)
@@ -152,17 +104,84 @@ def solution_variable_to_mathml(symbol):
     return root
 
 
-def model_to_mathml(d):
-    root = ET.Element("model", name=d.name)
+def include_to_mathml(include):
+    (submodel, to_replace, replacement) = include
+    root = ET.Element("include")
+    root.append(include_model_to_mathml(submodel))
+    root.append(sympy_to_mathml(to_replace))
+    root.append(sympy_to_mathml(replacement))
+    return root
 
-    for symbol in d.solution_variables:
+
+def include_model_to_mathml(m):
+    root = ET.Element("model", name=m.name)
+    for i in m.includes:
+        root.append(include_to_mathml(i))
+    return root
+
+
+def submodel_to_mathml(m):
+    root = ET.Element("model", name=m.name)
+
+    for p in m.parameters:
+        root.append(parameter_to_mathml(p))
+
+    for symbol in m.solution_variables:
         root.append(solution_variable_to_mathml(symbol))
 
-    for relation in d.independent_variables:
+    for relation in m.independent_variables:
         root.append(independent_variable_to_mathml(relation))
 
-    for eq in d.eqs:
+    for eq in m.eqs:
         root.append(sympy_to_mathml(eq))
+
+    for i in m.includes:
+        root.append(include_to_mathml(i))
+
+    return root
+
+
+def parameter_to_mathml(p):
+    root = ET.Element("parameter")
+    root.append(sympy_to_mathml(p))
+    return root
+
+
+def collect_models(m, models, parameters):
+    for (m, _, _) in m.includes:
+        collect_models(m, models, parameters)
+
+    # collect all the models
+    models[m] = None
+
+    # collect all the parameters
+    for peq in m.parameters:
+        if isinstance(peq, sympy.Eq):
+            # get dependent parameters
+            subjects = peq.args[0].free_symbols
+            free_p = peq.free_symbols
+            for s in subjects:
+                free_p.remove(s)
+            for p in free_p:
+                parameters[p] = None
+
+        parameters[peq] = None
+
+
+def model_to_mathml(d):
+    root = ET.Element("collection")
+    # collect internal models
+    models = collections.OrderedDict()
+    parameters = collections.OrderedDict()
+    for (m, _, _) in d.includes:
+        collect_models(m, models, parameters)
+
+    # serialise internal models
+    for m in models.keys():
+        root.append(submodel_to_mathml(m))
+
+    # serialise this models
+    root.append(submodel_to_mathml(d))
 
     return root
 
