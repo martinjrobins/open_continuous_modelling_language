@@ -19,14 +19,14 @@ def electrochemistry_model():
     lhs_boundary = model.Model()
     lhs_boundary.name = 'lhs'
     lhs_boundary.solution_variables = {c}
-    lhs_boundary.independent_variables = {}
+    lhs_boundary.bounds = {}
     lhs_boundary.eqs = {sympy.Eq(c, 1)}
 
     c = sympy.Function('c')(t)
     i = sympy.Function('i')(t)
     rhs_boundary = model.Model()
     rhs_boundary.name = 'rhs'
-    rhs_boundary.independent_variables = {sympy.Eq(x, L), t > 0}
+    rhs_boundary.bounds = {sympy.Eq(x, L), t > 0}
     rhs_boundary.solution_variables = {c, i}
     rhs_boundary.parameters = [sympy.Eq(E,Es + t + dE * sympy.sin(w * t)), k0,
             sympy.Eq(alpha,0.5), E0, Cdl]
@@ -39,7 +39,7 @@ def electrochemistry_model():
     c = sympy.Function('c')(x, t)
     domain = model.Model()
     domain.name = 'domain'
-    domain.independent_variables = {sympy.And(0 < x, x < L), t > 0}
+    domain.bounds = {0 < x, x < L, t > 0}
     domain.solution_variables = {c}
     domain.eqs = {sympy.Eq(c.diff(t), c.diff(x).diff(x))}
     domain.includes = {

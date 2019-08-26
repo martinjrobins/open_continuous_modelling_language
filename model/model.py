@@ -8,7 +8,7 @@ class Model:
     def __init__(self):
         self.name = ''
         self.solution_variables = {}
-        self.independent_variables = {}
+        self.bounds = {}
         self.parameters = {}
         self.eqs = {}
         self.includes = {}
@@ -27,9 +27,9 @@ class Model:
         for symbol in self.solution_variables:
             out = out + sympy.pretty(symbol) + '\n'
 
-        out = out + 'independent_variables:\n'
-        for relation in self.independent_variables:
-            out = out + sympy.pretty(relation) + '\n'
+        out = out + 'bounds:\n'
+        for eq in self.bounds:
+            out = out + sympy.pretty(eq) + '\n'
 
         out = out + 'equations:\n'
         for eq in self.eqs:
@@ -79,6 +79,16 @@ class Connection:
 
         return out
 
+def symbol_to_mathml(s):
+    if s.is_integer:
+        t = 'integer'
+    else:
+        t = 'real'
+    root = ET.Element("ci", type=t)
+    root.text = s.name
+    return root
+
+
 
 def sympy_to_mathml(s):
     mathml_str = sympy.printing.mathml(s)
@@ -92,30 +102,51 @@ def number_or_equation(s):
         return sympy_to_mathml(s)
 
 
-def independent_variable_to_mathml(relation):
-    root = ET.Element("independent_variable")
-    root.append(sympy_to_mathml(relation))
+def bounds_to_mathml(eqs):
+    root = ET.Element("bounds")
+    for eq in eqs:
+        root.append(sympy_to_mathml(eq))
     return root
 
 
-def solution_variable_to_mathml(symbol):
-    root = ET.Element("solution_variable")
-    root.append(sympy_to_mathml(symbol))
+def solution_variables_to_mathml(symbols):
+    root = ET.Element("solution_variables")
+    for s in symbols:
+        root.append(sympy_to_mathml(s))
     return root
 
 
 def include_to_mathml(include):
     (submodel, to_replace, replacement) = include
-    root = ET.Element("include")
-    root.append(include_model_to_mathml(submodel))
+    root = ET.Element("model", name=submodel.name)
+    for i in submodel.includes:
+        root.append(include_to_mathml(i))
     root.append(sympy_to_mathml(to_replace))
     root.append(sympy_to_mathml(replacement))
     return root
 
 
-def include_model_to_mathml(m):
-    root = ET.Element("model", name=m.name)
-    for i in m.includes:
+def equations_to_mathml(eqs):
+    root = ET.Element("equations")
+    for eq in eqs:
+        if isinstance(eq,tuple):
+            node = ET.Element('apply')
+            node.append(ET.Element('eq'))
+            domain = ET.Element('domainofapplication')
+            domain.append(sympy_to_mathml(eq[0]))
+            node.append(domain)
+            lhs = sympy_to_mathml(eq[1].args[0])
+            rhs = sympy_to_mathml(eq[1].args[1])
+            node.append(lhs)
+            node.append(rhs)
+            root.append(node)
+        else:
+            root.append(sympy_to_mathml(eq))
+    return root
+
+def includes_to_mathml(includes):
+    root = ET.Element("includes")
+    for i in includes:
         root.append(include_to_mathml(i))
     return root
 
@@ -123,20 +154,13 @@ def include_model_to_mathml(m):
 def submodel_to_mathml(m):
     root = ET.Element("model", name=m.name)
 
-    for p in m.parameters:
-        root.append(parameter_to_mathml(p))
+    root.append(solution_variables_to_mathml(m.solution_variables))
 
-    for symbol in m.solution_variables:
-        root.append(solution_variable_to_mathml(symbol))
+    root.append(bounds_to_mathml(m.bounds))
 
-    for relation in m.independent_variables:
-        root.append(independent_variable_to_mathml(relation))
+    root.append(equations_to_mathml(m.eqs))
 
-    for eq in m.eqs:
-        root.append(sympy_to_mathml(eq))
-
-    for i in m.includes:
-        root.append(include_to_mathml(i))
+    root.append(includes_to_mathml(m.includes))
 
     return root
 
