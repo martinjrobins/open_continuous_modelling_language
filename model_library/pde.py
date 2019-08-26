@@ -11,8 +11,10 @@ def pde_model():
 
     m = model.Model()
     m.name = 'laplace'
+    m.parameters
     m.solution_variables = {sympy.Function('c')(x)}
-    m.bounds = {x > 0, x < L}
+    m.parameters = {cl, L}
+    m.bounds = sympy.And(x > 0, x < L)
     c = sympy.Symbol('c')
     m.eqs = {
         sympy.Eq(sympy.Derivative(c, x, x), 0),
@@ -35,29 +37,17 @@ def pde_model_disc(N, dx):
     cl = sympy.Symbol('cl')
     L = sympy.Symbol('L')
 
-    c = sympy.Symbol('c')
-    m_lhs = model.Model()
-    m_lhs.name = 'laplace disc lhs'
-    m_lhs.solution_variables = {c}
-    m_lhs.eqs = {sympy.Eq(c, cl)}
-
-    m_rhs = model.Model()
-    m_rhs.name = 'laplace disc rhs'
-    m_rhs.solution_variables = {c}
-    m_rhs.eqs = {sympy.Eq(c, 0)}
-
     i = sympy.Idx('i')
     c = sympy.IndexedBase('c')
     m = model.Model()
     m.name = 'laplace discretised'
+    m.parameters = {cl, L}
     m.solution_variables = {c[i]}
-    m.bounds = {i > 0, i < N}
+    m.bounds = sympy.And(i >= 0, i <= N)
     m.eqs = {
-        sympy.Eq((c[i+1] - 2*c[i] - c[i-1])/(dx**2), 0),
-    }
-    m.includes = {
-        (m_lhs, sympy.Symbol('c'), c[0]),
-        (m_rhs, sympy.Symbol('c'), (c[N] - c[N-1])/dx),
+        (sympy.And(i > 0, i < N), sympy.Eq((c[i+1] - 2*c[i] - c[i-1])/(dx**2), 0)),
+        (sympy.Eq(i, 0), sympy.Eq(c[i], cl)),
+        (sympy.Eq(i, N), sympy.Eq((c[i] - c[i-1])/dx, 0))
     }
 
     return m

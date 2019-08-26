@@ -12,7 +12,8 @@ def ode_model():
     m = model.Model()
     m.name = 'logistic'
     m.solution_variables = {c}
-    m.bounds = {t > 0}
+    m.parameters = {r, K, c0}
+    m.bounds = t > 0
     c = sympy.Symbol('c')
     m.eqs = {
         sympy.Eq(sympy.Derivative(c, t), r * c * (1 - c/K)),
@@ -34,22 +35,15 @@ def ode_model_disc(dt, N):
     K = sympy.Symbol('K')
     c0 = sympy.Symbol('cinit')
 
-    c = sympy.Symbol('c')
-    m_init = model.Model()
-    m_init.name = 'logistic initial value'
-    m_init.solution_variables = {c}
-    m_init.eqs = {sympy.Eq(c, c0)}
-
     c = sympy.IndexedBase('c')
     m = model.Model()
     m.name = 'logistic discretised'
+    m.parameters = {r, K, c0}
     m.solution_variables = {c[n]}
-    m.bounds = {n > 0, n <= N}
+    m.bounds = sympy.And(n >= 0, n <= N)
     m.eqs = {
         sympy.Eq((c[n] - c[n-1])/dt, r * c[n-1] * (1 - c[n-1]/K)),
-    }
-    m.includes = {
-        (m_init, sympy.Symbol('c'), c[0]),
+        (sympy.Eq(n, 0), sympy.Eq(c[n], c0)),
     }
 
     return m

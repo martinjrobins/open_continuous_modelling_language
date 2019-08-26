@@ -15,6 +15,7 @@ print_model(model_library.ode_model())
 print_model(model_library.ode_model_disc(0.1, 100))
 print_model(model_library.pde_model())
 print_model(model_library.pde_model_disc(100, 0.1))
+print_model(model_library.electrochemistry_model())
 
 
 
